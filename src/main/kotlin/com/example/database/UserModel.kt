@@ -1,6 +1,7 @@
 package com.example.database
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
@@ -12,12 +13,21 @@ import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
-import org.mindrot.jbcrypt.BCrypt
 
 
 @Serializable
-data class ExposedUser(val login: String, val email: String, val password: String) {
-}
+data class RegInfo(
+    @SerialName("login") val login: String,
+    @SerialName("email") val email: String,
+    @SerialName("password") val password: String
+)
+
+@Serializable
+data class LoginInfo(
+    val login: String,
+    val password: String
+)
+
 
 
 class UserService(private val database: Database) {
@@ -37,52 +47,53 @@ class UserService(private val database: Database) {
         }
     }
 
-    fun hashedPassword(password:String):String{
-        return BCrypt.hashpw(password,BCrypt.gensalt())
-    }
-
-    suspend fun <T> dbQuery(block: suspend () -> T): T =
+    private suspend fun <T> dbQuery(block: suspend () -> T): T =
         newSuspendedTransaction(Dispatchers.IO) { block() }
 
 
-    suspend fun create(user: ExposedUser): Int = dbQuery {
+    suspend fun register(regInfo: RegInfo): Int = dbQuery {
         Users.insert {
-            it[login] = user.login
-            it[email] = user.email
-            it[password] = user.password
+            it[login] = regInfo.login
+            it[email] = regInfo.email
+            it[password] = regInfo.password
         }[Users.id]
     }
 
-    suspend fun read(id: Int): ExposedUser? {
-        return dbQuery {
-            Users.select { Users.id eq id }
-                .map { ExposedUser(it[Users.login], it[Users.email], it[Users.password])}
-                .singleOrNull()
-        }
-    }
-
-    suspend fun find(login: String): ExposedUser? {
-        return dbQuery {
-            Users.select { Users.login eq login }
-                .map { ExposedUser(it[Users.login], it[Users.email], it[Users.password])}
-                .singleOrNull()
-        }
-    }
-
-    suspend fun update(id: Int, user: ExposedUser) {
-        dbQuery {
-            Users.update({ Users.id eq id }) {
-                it[login] = user.login
-                it[email] = user.email
-                it[password] = user.password
+    suspend fun login(loginInfo: LoginInfo): Int {
+        val usersList = dbQuery {
+            Users.select {
+                Users.login eq loginInfo.login
+                Users.password eq loginInfo.password
+            }.map {
+                it[Users.id]
             }
         }
+        return if (usersList.isEmpty())
+            -1
+        else
+            usersList.single()
     }
 
-    suspend fun delete(id: Int) {
+
+    suspend fun getUserName(userId: Int):String?{
+        val userList = dbQuery {
+            Users.select{
+                Users.id eq userId
+            }
+                .map {
+                    it[Users.login]
+                }
+        }
+        return userList.singleOrNull()
+    }
+
+
+
+    suspend fun delete(id: Int): Boolean {
         dbQuery {
             Users.deleteWhere { Users.id.eq(id) }
         }
+        return dbQuery { Users.select{ Users.id eq id }.empty() }
     }
 
 }

@@ -1,9 +1,9 @@
 package com.example.plugins
 
-import com.example.database.ExposedRecipe
-import com.example.database.ExposedUser
-import com.example.database.RecipesService
-import com.example.database.UpdateRecipe
+import com.example.database.*
+import com.example.responses.GetRecipesResponse
+import com.example.responses.RecipeResponse
+import com.example.responses.RecipeWithUser
 import io.ktor.server.application.Application
 import io.ktor.http.*
 import io.ktor.server.request.*
@@ -15,44 +15,74 @@ import org.jetbrains.exposed.sql.*
 fun Application.configureRecipes(database: Database) {
 
     val recipeService = RecipesService(database)
+    val userService = UserService(database)
 
     routing {
 
-    post("/recipe") {
-        val recipe = call.receive<ExposedRecipe>()
-        val id = recipeService.create(recipe)
-        call.respond(HttpStatusCode.Created, id)
+
+        get("recipes") {
+            val recipes = recipeService.readAll()
+            call.respond(GetRecipesResponse(
+                success = true,
+                recipes = recipes.map {
+                    RecipeWithUser(
+                        id = it.id,
+                        name = it.name,
+                        category = it.category,
+                        ingredients = it.ingredients,
+                        text = it.text,
+                        userId = it.userId,
+                        userName = userService.getUserName(it.userId) ?: "unknown"
+                    )
+                }
+            ))
+        }
+
+        post("editRecipe") {
+            val updateInfo = call.receive<UpdateRecipeInfo>()
+            val recipe = recipeService.updateRecipe(updateInfo)
+            if (recipe != null)
+                call.respond(
+                    RecipeResponse(
+                        success = true,
+                        recipe = RecipeWithUser(
+                            id = recipe.id,
+                            name = recipe.name,
+                            category = recipe.category,
+                            ingredients = recipe.ingredients,
+                            text = recipe.text,
+                            userId = recipe.userId,
+                            userName = userService.getUserName(recipe.userId) ?: "unknown"
+                        )
+                    )
+                )
+            else
+                call.respond(HttpStatusCode.NotFound)
+        }
+
+        post("createRecipe") {
+            val createRecipeInfo = call.receive<AddRecipeInfo>()
+            val recipe = recipeService.create(createRecipeInfo)
+            if (recipe != null)
+                call.respond(
+                    RecipeResponse(
+                        success = true,
+                        recipe = RecipeWithUser(
+                            id = recipe.id,
+                            name = recipe.name,
+                            category = recipe.category,
+                            ingredients = recipe.ingredients,
+                            text = recipe.text,
+                            userId = recipe.userId,
+                            userName = userService.getUserName(recipe.userId) ?: "unknown"
+                        )
+                    )
+                )
+            else
+                call.respond(HttpStatusCode.NotFound)
+        }
+
+
+
     }
-        get("/recipe") {
-            val recipe = recipeService.readAll()
-            if (recipe != null) {
-                call.respond(HttpStatusCode.OK, recipe)
-            } else {
-                call.respond(HttpStatusCode.NotFound)
-            }
-        }
-
-        get("/recipe/{id}") {
-            val id = call.parameters["id"]?.toInt() ?: throw IllegalArgumentException("Invalid ID")
-            val recipe = recipeService.read(id)
-            if (recipe != null) {
-                call.respond(HttpStatusCode.OK, recipe)
-            } else {
-                call.respond(HttpStatusCode.NotFound)
-            }
-        }
-
-        put("/recipe/{id}") {
-            val id = call.parameters["id"]?.toInt() ?: throw IllegalArgumentException("Invalid ID")
-            val recipe = call.receive<UpdateRecipe>()
-            recipeService.update(id, recipe)
-            call.respond(HttpStatusCode.OK)
-        }
-
-        delete("/recipe/{id}") {
-            val id = call.parameters["id"]?.toInt() ?: throw IllegalArgumentException("Invalid ID")
-            recipeService.delete(id)
-            call.respond(HttpStatusCode.OK)
-        }
-}
 }

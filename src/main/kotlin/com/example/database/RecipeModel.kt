@@ -1,8 +1,5 @@
 package com.example.database
-import com.example.database.RecipesService.Recipes.category
-import com.example.database.RecipesService.Recipes.ingredients
-import com.example.database.RecipesService.Recipes.name
-import com.example.database.RecipesService.Recipes.userId
+
 import com.example.database.UserService.Users
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.Serializable
@@ -21,10 +18,34 @@ import org.jetbrains.exposed.sql.update
 
 
 @Serializable
-data class ExposedRecipe(val name: String, val category: String, val ingredients: String, val text: String, val userId: Int) {
-}
+data class Recipe(
+    val id: Int,
+    val name: String,
+    val category: String,
+    val ingredients: String,
+    val text: String,
+    val userId: Int,
+)
+
 @Serializable
-data class UpdateRecipe(val name: String, val category: String, val ingredients: String, val text: String)
+data class AddRecipeInfo(
+    val name: String,
+    val category: String,
+    val ingredients: String,
+    val text: String,
+    val userId: Int
+)
+
+
+@Serializable
+data class UpdateRecipeInfo(
+    val id: Int,
+    val name: String,
+    val category: String,
+    val ingredients: String,
+    val text: String,
+)
+
 
 class RecipesService(private val database: Database) {
     object Recipes : Table() {
@@ -33,7 +54,7 @@ class RecipesService(private val database: Database) {
         val category = varchar("category", length = 50)
         val ingredients = varchar("ingredients", length = 50)
         val text = varchar("text", length = 50)
-        val userId = integer("userId" ).references(Users.id, ReferenceOption.CASCADE)
+        val userId = integer("userId").references(Users.id, ReferenceOption.CASCADE)
 
         override val primaryKey = PrimaryKey(id)
     }
@@ -43,53 +64,82 @@ class RecipesService(private val database: Database) {
             SchemaUtils.create(Recipes)
         }
     }
-    suspend fun <T> dbQuery(block: suspend () -> T): T =
+
+    private suspend fun <T> dbQuery(block: suspend () -> T): T =
         newSuspendedTransaction(Dispatchers.IO) { block() }
 
-
-    suspend fun create(recipe: ExposedRecipe): Int = dbQuery {
-        Recipes.insert {
-            it[name] = recipe.name
-            it[category] = recipe.category
-            it[ingredients] = recipe.ingredients
-            it[text] = recipe.text
-            it[userId] = recipe.userId
-        }[Recipes.id]
+    suspend fun readAll(): List<Recipe> {
+        return dbQuery {
+            Recipes.selectAll()
+        }.map {
+            Recipe(
+                id = it[Recipes.id],
+                name = it[Recipes.name],
+                category = it[Recipes.category],
+                ingredients = it[Recipes.ingredients],
+                text = it[Recipes.text],
+                userId = it[Recipes.userId]
+            )
+        }
     }
 
-    suspend fun read(id: Int): ExposedRecipe? {
+    suspend fun updateRecipe(updateRecipeInfo: UpdateRecipeInfo): Recipe? {
+        dbQuery {
+            Recipes.update({ Recipes.id eq updateRecipeInfo.id }) {
+                it[name] = updateRecipeInfo.name
+                it[category] = updateRecipeInfo.category
+                it[ingredients] = updateRecipeInfo.ingredients
+                it[text] = updateRecipeInfo.text
+            }
+        }
         return dbQuery {
-            Recipes.select { Recipes.id eq id }
-                .map { ExposedRecipe(it[Recipes.name], it[Recipes.category], it[Recipes.ingredients], it[Recipes.text], it[Recipes.userId])}
+            Recipes.select { Recipes.id eq updateRecipeInfo.id }
+                .map {
+                    Recipe(
+                        id = it[Recipes.id],
+                        name = it[Recipes.name],
+                        category = it[Recipes.category],
+                        ingredients = it[Recipes.ingredients],
+                        text = it[Recipes.text],
+                        userId = it[Recipes.userId]
+                    )
+                }
                 .singleOrNull()
         }
     }
-    suspend fun readAll(): List<ExposedRecipe>? {
+
+    suspend fun create(addRecipeInfo: AddRecipeInfo): Recipe? {
+        val id = dbQuery {
+            Recipes.insert {
+                it[name] = addRecipeInfo.name
+                it[category] = addRecipeInfo.category
+                it[ingredients] = addRecipeInfo.ingredients
+                it[text] = addRecipeInfo.text
+                it[userId] = addRecipeInfo.userId
+            }[Recipes.id]
+        }
         return dbQuery {
-            Recipes.selectAll()
-        }       .map { ExposedRecipe(
-            it[Recipes.name],
-            it[Recipes.category],
-            it[Recipes.ingredients],
-            it[Recipes.text],
-            it[Recipes.userId]) }
-    }
-
-
-    suspend fun update(id: Int, recipe: UpdateRecipe) {
-        dbQuery {
-            Recipes.update({ Recipes.id eq id }) {
-                it[name] = recipe.name
-                it[category] = recipe.category
-                it[ingredients] = recipe.ingredients
-                it[text] = recipe.text
-            }
+            Recipes.select { Recipes.id eq id }
+                .map {
+                    Recipe(
+                        id = it[Recipes.id],
+                        name = it[Recipes.name],
+                        category = it[Recipes.category],
+                        ingredients = it[Recipes.ingredients],
+                        text = it[Recipes.text],
+                        userId = it[Recipes.userId]
+                    )
+                }
+                .singleOrNull()
         }
     }
 
-    suspend fun delete(id: Int) {
+
+    suspend fun delete(id: Int): Boolean {
         dbQuery {
             Recipes.deleteWhere { Recipes.id.eq(id) }
         }
+        return dbQuery { Recipes.select { Recipes.id eq id }.empty() }
     }
+
 }
