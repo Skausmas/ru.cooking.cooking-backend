@@ -71,15 +71,16 @@ class RecipesService(private val database: Database) {
     suspend fun readAll(): List<Recipe> {
         return dbQuery {
             Recipes.selectAll()
-        }.map {
-            Recipe(
-                id = it[Recipes.id],
-                name = it[Recipes.name],
-                category = it[Recipes.category],
-                ingredients = it[Recipes.ingredients],
-                text = it[Recipes.text],
-                userId = it[Recipes.userId]
-            )
+                .map {
+                    Recipe(
+                        id = it[Recipes.id],
+                        name = it[Recipes.name],
+                        category = it[Recipes.category],
+                        ingredients = it[Recipes.ingredients],
+                        text = it[Recipes.text],
+                        userId = it[Recipes.userId]
+                    )
+                }
         }
     }
 
